@@ -1,0 +1,162 @@
+*PPD-Adobe: "4.3"
+*FormatVersion: "4.3"
+*FileVersion: "1.1"
+*LanguageVersion: English
+*LanguageEncoding: ISOLatin1
+*PCFileName: "TD2130N.PPD"
+*Manufacturer: "Brother"
+*Product: "(TD-2130N)"
+*ModelName: "Brother TD-2130N"
+*NickName: "Brother TD-2130N"
+*ShortNickName: "Brother TD-2130N"
+*PSVersion: "(3010.000) 0"
+*LanguageLevel: "3"
+*ColorDevice: False
+*DefaultColorSpace: Gray
+*FileSystem: False
+*Throughput: "1"
+*cupsVersion: 1.4
+*cupsModelNumber: 2130
+*cupsManualCopies: True
+*cupsFilter: "application/vnd.cups-raster 0 rastertobrothertd2130"
+*cupsBitsPerColor: 8
+*cupsBitsPerPixel: 8
+*cupsColorOrder: Chunked
+*cupsColorSpace: 3
+
+*OpenUI *PageSize/Label Size: PickOne
+*OrderDependency: 10 AnySetup *PageSize
+*DefaultPageSize: DieCut50x15
+*PageSize DieCut50x15/50 x 15 mm Die-cut: "<</PageSize [141.732 42.520] /ImagingBBox null>> setpagedevice"
+*PageSize DieCut30x30/30 x 30 mm Die-cut: "<</PageSize [85.039 85.039] /ImagingBBox null>> setpagedevice"
+*PageSize DieCut40x40/40 x 40 mm Die-cut: "<</PageSize [113.386 113.386] /ImagingBBox null>> setpagedevice"
+*PageSize DieCut40x50/40 x 50 mm Die-cut: "<</PageSize [113.386 141.732] /ImagingBBox null>> setpagedevice"
+*PageSize DieCut40x60/40 x 60 mm Die-cut: "<</PageSize [113.386 170.079] /ImagingBBox null>> setpagedevice"
+*PageSize DieCut50x30/50 x 30 mm Die-cut: "<</PageSize [141.732 85.039] /ImagingBBox null>> setpagedevice"
+*PageSize DieCut51x26/51 x 26 mm Die-cut: "<</PageSize [144.567 73.701] /ImagingBBox null>> setpagedevice"
+*PageSize DieCut60x60/60 x 60 mm Die-cut: "<</PageSize [170.079 170.079] /ImagingBBox null>> setpagedevice"
+*PageSize Roll57/57 mm Continuous (100 mm page): "<</PageSize [161.575 283.465] /ImagingBBox null>> setpagedevice"
+*PageSize Roll58/58 mm Continuous (100 mm page): "<</PageSize [164.409 283.465] /ImagingBBox null>> setpagedevice"
+*CloseUI: *PageSize
+
+*OpenUI *PageRegion/Label Size: PickOne
+*OrderDependency: 10 AnySetup *PageRegion
+*DefaultPageRegion: DieCut50x15
+*PageRegion DieCut50x15/50 x 15 mm Die-cut: "<</PageSize [141.732 42.520] /ImagingBBox null>> setpagedevice"
+*PageRegion DieCut30x30/30 x 30 mm Die-cut: "<</PageSize [85.039 85.039] /ImagingBBox null>> setpagedevice"
+*PageRegion DieCut40x40/40 x 40 mm Die-cut: "<</PageSize [113.386 113.386] /ImagingBBox null>> setpagedevice"
+*PageRegion DieCut40x50/40 x 50 mm Die-cut: "<</PageSize [113.386 141.732] /ImagingBBox null>> setpagedevice"
+*PageRegion DieCut40x60/40 x 60 mm Die-cut: "<</PageSize [113.386 170.079] /ImagingBBox null>> setpagedevice"
+*PageRegion DieCut50x30/50 x 30 mm Die-cut: "<</PageSize [141.732 85.039] /ImagingBBox null>> setpagedevice"
+*PageRegion DieCut51x26/51 x 26 mm Die-cut: "<</PageSize [144.567 73.701] /ImagingBBox null>> setpagedevice"
+*PageRegion DieCut60x60/60 x 60 mm Die-cut: "<</PageSize [170.079 170.079] /ImagingBBox null>> setpagedevice"
+*PageRegion Roll57/57 mm Continuous (100 mm page): "<</PageSize [161.575 283.465] /ImagingBBox null>> setpagedevice"
+*PageRegion Roll58/58 mm Continuous (100 mm page): "<</PageSize [164.409 283.465] /ImagingBBox null>> setpagedevice"
+*CloseUI: *PageRegion
+
+*DefaultImageableArea: DieCut50x15
+*ImageableArea DieCut50x15: "4.386 8.540 137.346 33.980"
+*ImageableArea DieCut30x30: "4.360 8.560 80.680 76.480"
+*ImageableArea DieCut40x40: "4.373 8.573 109.013 104.813"
+*ImageableArea DieCut40x50: "4.373 8.586 109.013 133.146"
+*ImageableArea DieCut40x60: "4.373 8.479 109.013 161.599"
+*ImageableArea DieCut50x30: "4.386 8.560 137.346 76.480"
+*ImageableArea DieCut51x26: "4.603 9.130 139.963 64.570"
+*ImageableArea DieCut60x60: "5.839 8.479 164.239 161.599"
+*ImageableArea Roll57: "4.227 8.504 157.347 274.961"
+*ImageableArea Roll58: "4.444 8.504 159.964 274.961"
+*DefaultPaperDimension: DieCut50x15
+*PaperDimension DieCut50x15: "141.732 42.520"
+*PaperDimension DieCut30x30: "85.039 85.039"
+*PaperDimension DieCut40x40: "113.386 113.386"
+*PaperDimension DieCut40x50: "113.386 141.732"
+*PaperDimension DieCut40x60: "113.386 170.079"
+*PaperDimension DieCut50x30: "141.732 85.039"
+*PaperDimension DieCut51x26: "144.567 73.701"
+*PaperDimension DieCut60x60: "170.079 170.079"
+*PaperDimension Roll57: "161.575 283.465"
+*PaperDimension Roll58: "164.409 283.465"
+
+*HWMargins: 4.394 8.504 4.394 8.504
+*VariablePaperSize: True
+*MaxMediaWidth: "178.583"
+*MaxMediaHeight: "722.835"
+*ParamCustomPageSize Width: 1 points 53.858 178.583
+*ParamCustomPageSize Height: 2 points 19.843 722.835
+*ParamCustomPageSize WidthOffset: 3 points 0 0
+*ParamCustomPageSize HeightOffset: 4 points 0 0
+*ParamCustomPageSize Orientation: 5 int 0 0
+*CustomPageSize True: "pop pop pop <</PageSize [5 -2 roll] /ImagingBBox null>> setpagedevice"
+
+*OpenUI *Rotate180/Output Orientation: Boolean
+*OrderDependency: 20 AnySetup *Rotate180
+*DefaultRotate180: True
+*Rotate180 True/Normal (Recommended): ""
+*Rotate180 False/Upside Down (Rotate 180 Degrees): ""
+*CloseUI: *Rotate180
+
+*OpenUI *MirrorPrint/Horizontal Mirror: Boolean
+*DefaultMirrorPrint: False
+*MirrorPrint False/Normal: ""
+*MirrorPrint True/Mirror Left to Right: ""
+*CloseUI: *MirrorPrint
+
+*OpenUI *Peeler/Label Peeler Attachment: Boolean
+*DefaultPeeler: False
+*Peeler False/Not Installed: ""
+*Peeler True/Installed and In Use: ""
+*CloseUI: *Peeler
+
+*OpenUI *Priority/Printing Priority: PickOne
+*DefaultPriority: Speed
+*Priority Speed/Faster Printing: ""
+*Priority Quality/Best Print Quality: ""
+*CloseUI: *Priority
+
+*OpenUI *Compress/Data Transfer Mode: Boolean
+*DefaultCompress: False
+*Compress False/Start Printing Immediately (Recommended for USB): ""
+*Compress True/Compress Before Printing (Slower Start): ""
+*CloseUI: *Compress
+
+*OpenUI *Halftone/Grayscale Rendering: PickOne
+*DefaultHalftone: ErrorDiffusion
+*Halftone Binary/Black or White Only (Text and Barcodes): ""
+*Halftone Dither/Pattern Dither (Graphics): ""
+*Halftone ErrorDiffusion/Error Diffusion (Photos, Recommended): ""
+*CloseUI: *Halftone
+
+*OpenUI *Brightness/Brightness: PickOne
+*DefaultBrightness: 0
+*Brightness -50/-50: ""
+*Brightness -25/-25: ""
+*Brightness 0/0: ""
+*Brightness 25/25: ""
+*Brightness 50/50: ""
+*CloseUI: *Brightness
+
+*OpenUI *Contrast/Contrast: PickOne
+*DefaultContrast: 0
+*Contrast -50/-50: ""
+*Contrast -25/-25: ""
+*Contrast 0/0: ""
+*Contrast 25/25: ""
+*Contrast 50/50: ""
+*CloseUI: *Contrast
+
+*OpenUI *Feed/Feed Margin (Continuous Rolls Only): PickOne
+*DefaultFeed: 3
+*Feed 3/3 mm: ""
+*Feed 5/5 mm: ""
+*Feed 10/10 mm: ""
+*Feed 15/15 mm: ""
+*Feed 20/20 mm: ""
+*Feed 25/25 mm: ""
+*Feed 30/30 mm: ""
+*CloseUI: *Feed
+
+*DefaultResolution: 300dpi
+*OpenUI *Resolution/Resolution: PickOne
+*OrderDependency: 10 AnySetup *Resolution
+*Resolution 300dpi/300 DPI: "<</HWResolution[300 300]>>setpagedevice"
+*CloseUI: *Resolution

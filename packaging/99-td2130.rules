@@ -1,0 +1,3 @@
+# Brother TD-2130N: allow members of the common printer-access group to use libusb.
+# Some distributions use lp; adjust GROUP if your distribution uses a different group.
+SUBSYSTEM=="usb", ATTR{idVendor}=="04f9", ATTR{idProduct}=="2058", MODE="0660", GROUP="lp", TAG+="uaccess"

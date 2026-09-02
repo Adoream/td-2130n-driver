@@ -1,0 +1,27 @@
+# Build products
+td2130
+rastertobrothertd2130
+src/*.o
+tests/test_protocol
+tests/make_cups_raster
+*.dSYM/
+
+# Generated print/test data
+*.bin
+*.pbm
+*.ras
+*.raster
+
+# Local and editor files
+.DS_Store
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# Local Brother reference material; do not publish without redistribution rights
+docs/*.pdf
+cupswrapper-td2130n-src-*/
+*.deb
+*.rpm
