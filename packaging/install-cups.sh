@@ -12,7 +12,7 @@ if [ "$(uname -s)" = "Darwin" ]; then
     trap 'rm -f "$temporary_ppd"' EXIT HUP INT TERM
 
     mkdir -p "$filter_dir" "$ppd_dir"
-    cp rastertobrothertd2130 "$filter_path"
+    cp build/rastertobrothertd2130 "$filter_path"
     chmod 0755 "$filter_path"
     sed "s| 0 rastertobrothertd2130\"| 0 $filter_path\"|" \
         cups/Brother-TD2130N.ppd > "$temporary_ppd"
@@ -24,7 +24,7 @@ else
     filter_path="$filter_dir/rastertobrothertd2130"
     ppd_path="$ppd_dir/Brother-TD2130N.ppd"
 
-    install -m 0755 rastertobrothertd2130 "$filter_path"
+    install -m 0755 build/rastertobrothertd2130 "$filter_path"
     install -m 0644 cups/Brother-TD2130N.ppd "$ppd_path"
 fi
 
