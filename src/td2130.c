@@ -4,6 +4,94 @@
 #include <stdlib.h>
 #include <string.h>
 
+static void put_u16le(uint8_t *p, unsigned value) {
+    p[0] = (uint8_t)value;
+    p[1] = (uint8_t)(value >> 8);
+}
+
+/* This deliberately mirrors the legacy tool's decimal fixed-point path:
+   truncate first, perform integer division, then round the requested number
+   of decimal places. */
+static int legacy_mm_to_dots(double mm, int decimals, unsigned dpi) {
+    int scale = decimals == 1 ? 10 : 1000;
+    int divisor = decimals == 1 ? 10 : 1000;
+    int value = ((int)(mm * scale) * (int)dpi * 10) / 254;
+    return (value + divisor / 2) / divisor;
+}
+
+int td2130_build_media_definition(
+    uint8_t out[TD2130_MEDIA_DEFINITION_SIZE],
+    const td_media_definition *m) {
+    static const uint8_t command[] = {0x1b, 0x69, 0x55, 0x77, 0x01, 0x3f};
+    uint8_t *p;
+    int width, height, gap, left, right, top, bottom, mark_length, mark_offset;
+    int centered_width, head_offset;
+    unsigned dpi, head_dots;
+
+    if (!out || !m || m->sensor < TD_MEDIA_CONTINUOUS ||
+        m->sensor > TD_MEDIA_BLACK_MARK || m->width_mm <= 0.0 ||
+        m->width_mm > 255.0 || m->height_mm < 0.0 ||
+        m->height_mm > 65535.0 || m->gap_mm < 0.0 ||
+        m->top_mm < 0.0 || m->bottom_mm < 0.0 || m->left_mm < 0.0 ||
+        m->right_mm < 0.0 || m->mark_length_mm < 0.0 ||
+        m->mark_offset_mm < 0.0 || m->left_mm + m->right_mm >= m->width_mm ||
+        m->height_mm <= 0.0 || m->top_mm + m->bottom_mm >= m->height_mm)
+        return -1;
+
+    dpi = m->dpi ? m->dpi : 300u;
+    head_dots = m->head_dots ? m->head_dots : (dpi == 203u ? 448u : 672u);
+    if ((dpi != 203u && dpi != 300u) || head_dots == 0 || head_dots > 65535u)
+        return -1;
+
+    memset(out, 0, TD2130_MEDIA_DEFINITION_SIZE);
+    memcpy(out, command, sizeof(command));
+    p = out + sizeof(command);
+
+    width = legacy_mm_to_dots(m->width_mm, 1, dpi);
+    height = legacy_mm_to_dots(m->height_mm, 1, dpi);
+    gap = legacy_mm_to_dots(m->gap_mm, 3, dpi);
+    left = legacy_mm_to_dots(m->left_mm, 3, dpi);
+    right = legacy_mm_to_dots(m->right_mm, 3, dpi);
+    top = legacy_mm_to_dots(m->top_mm, 3, dpi);
+    bottom = legacy_mm_to_dots(m->bottom_mm, 3, dpi);
+    mark_length = legacy_mm_to_dots(m->mark_length_mm, 3, dpi);
+    mark_offset = legacy_mm_to_dots(m->mark_offset_mm, 3, dpi);
+
+    centered_width = legacy_mm_to_dots(m->width_mm - 2.0 * m->left_mm, 1, dpi);
+    head_offset = ((int)head_dots - centered_width) / 2;
+    if (head_offset < 0)
+        return -1;
+
+    p[0] = m->sensor == TD_MEDIA_CONTINUOUS ? 4 : 5;
+    p[1] = (uint8_t)m->width_mm;
+    put_u16le(p + 2, (unsigned)m->height_mm);
+    put_u16le(p + 5, (unsigned)head_offset);
+    put_u16le(p + 7, (unsigned)(width - left - right));
+    put_u16le(p + 9, m->sensor == TD_MEDIA_CONTINUOUS
+                           ? 0u : (unsigned)(height - top - bottom));
+
+    if (m->sensor == TD_MEDIA_CONTINUOUS) {
+        (void)snprintf((char *)p + 0x4c, 16, "%dmm", (int)m->width_mm);
+        (void)snprintf((char *)p + 0x5c, 16, "%.1f\"", m->width_mm / 25.4);
+    } else {
+        (void)snprintf((char *)p + 0x4c, 16, "%dmm x %dmm",
+                       (int)m->width_mm, (int)m->height_mm);
+        (void)snprintf((char *)p + 0x5c, 16, "%.1f\" x %.1f\"",
+                       m->width_mm / 25.4, m->height_mm / 25.4);
+    }
+
+    put_u16le(p + 0x6e, m->sensor == TD_MEDIA_CONTINUOUS
+                              ? 0u : (unsigned)(height + gap));
+    put_u16le(p + 0x72, (unsigned)top);
+    if (m->sensor == TD_MEDIA_BLACK_MARK) {
+        put_u16le(p + 0x74, (unsigned)mark_offset);
+        put_u16le(p + 0x76, (unsigned)mark_length);
+    }
+    p[0x78] = (uint8_t)m->sensor;
+    put_u16le(p + 0x79, (unsigned)bottom);
+    return 0;
+}
+
 void td_buffer_init(td_buffer *b) { memset(b, 0, sizeof(*b)); }
 
 void td_buffer_free(td_buffer *b) {

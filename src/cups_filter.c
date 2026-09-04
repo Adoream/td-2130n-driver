@@ -25,6 +25,41 @@ static int write_all(int fd, const uint8_t *data, size_t len) {
     return 0;
 }
 
+static int load_registered_media(const char *choice,
+                                 uint8_t data[TD2130_MEDIA_DEFINITION_SIZE]) {
+    const char *root = getenv("TD2130_MEDIA_ROOT");
+    char registry[1024], binary[1024], line[512], name[128];
+    FILE *f;
+    if (!choice || strncmp(choice, "BrL", 3)) return 0;
+    if (!root) root = "/opt/brother/PTouch/td2130n/inf";
+    if (snprintf(registry, sizeof(registry), "%s/brtd2130nfunc", root) >=
+        (int)sizeof(registry)) return -1;
+    f = fopen(registry, "r");
+    if (!f) return -1;
+    name[0] = '\0';
+    while (fgets(line, sizeof(line), f)) {
+        size_t id_len = strlen(choice);
+        if (!strncmp(line, choice, id_len) && line[id_len] == '/') {
+            char *end;
+            snprintf(name, sizeof(name), "%s", line + id_len + 1);
+            end = strpbrk(name, "\r\n");
+            if (end) *end = '\0';
+            break;
+        }
+    }
+    fclose(f);
+    if (!name[0] || strchr(name, '/')) return -1;
+    if (snprintf(binary, sizeof(binary), "%s/customtape/%s.bin", root, name) >=
+        (int)sizeof(binary)) return -1;
+    f = fopen(binary, "rb");
+    if (!f) return -1;
+    size_t n = fread(data, 1, TD2130_MEDIA_DEFINITION_SIZE, f);
+    int extra = fgetc(f);
+    fclose(f);
+    return n == TD2130_MEDIA_DEFINITION_SIZE && extra == EOF &&
+           !memcmp(data, "\033iUw\001\077", 6) ? 1 : -1;
+}
+
 static int is_on(const char *value) {
     return value && (!strcasecmp(value, "true") || !strcasecmp(value, "on") ||
                      !strcasecmp(value, "yes") || !strcmp(value, "1"));
@@ -145,6 +180,17 @@ int main(int argc, char **argv) {
     const char *contrast_value = option2("Contrast", "BrContrast", num_options, options);
     int brightness = bright_value ? atoi(bright_value) : 0;
     int contrast = contrast_value ? atoi(contrast_value) : 0;
+    const char *page_size_option = cupsGetOption("PageSize", num_options, options);
+    uint8_t media_definition[TD2130_MEDIA_DEFINITION_SIZE];
+    int have_media_definition = load_registered_media(page_size_option, media_definition);
+    if (have_media_definition < 0) {
+        fprintf(stderr, "ERROR: Cannot load registered media definition for %s\n",
+                page_size_option ? page_size_option : "(unknown)");
+        cupsFreeOptions(num_options, options);
+        cupsRasterClose(raster);
+        if (fd != STDIN_FILENO) close(fd);
+        return 1;
+    }
     cups_page_header2_t h;
     unsigned page = 0;
     int result = 0;
@@ -157,9 +203,11 @@ int main(int argc, char **argv) {
         }
         unsigned media_width = points_to_mm(h.cupsPageSize[0]);
         unsigned media_length = points_to_mm(h.cupsPageSize[1]);
-        const char *page_size = cupsGetOption("PageSize", num_options, options);
+        const char *page_size = page_size_option;
         bool continuous = (page_size && (strstr(page_size, "57X1") || strstr(page_size, "58X1") ||
                                          strstr(page_size, "Roll57") || strstr(page_size, "Roll58")));
+        if (have_media_definition && media_definition[6 + 0x78] == TD_MEDIA_CONTINUOUS)
+            continuous = true;
         if (continuous) media_length = 0;
         if (media_width < 19 || media_width > 63 || (!continuous && (media_length < 7 || media_length > 255))) {
             fprintf(stderr, "ERROR: Unsupported custom media %u x %u mm\n", media_width, media_length);
@@ -209,7 +257,17 @@ int main(int argc, char **argv) {
                 fprintf(stderr, "ERROR: Raster dimensions do not match media printable area\n");
                 td_buffer_free(&job); free(normalized); result = 1; goto done;
             }
-            if (write_all(STDOUT_FILENO, job.data, job.len)) {
+            int write_failed;
+            if (have_media_definition) {
+                write_failed = write_all(STDOUT_FILENO, job.data, 202) ||
+                               write_all(STDOUT_FILENO, media_definition,
+                                         sizeof(media_definition)) ||
+                               write_all(STDOUT_FILENO, job.data + 202,
+                                         job.len - 202);
+            } else {
+                write_failed = write_all(STDOUT_FILENO, job.data, job.len);
+            }
+            if (write_failed) {
                 fprintf(stderr, "ERROR: Cannot write printer data: %s\n", strerror(errno));
                 td_buffer_free(&job); free(normalized); result = 1; goto done;
             }
