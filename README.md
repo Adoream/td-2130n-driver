@@ -64,6 +64,7 @@ make test
 Tests cover protocol framing, media parameters, PackBits, CUPS Raster
 conversion, and normalization of both `554x106` printable-area input and
 `591x177` physical-page input for a 50 x 15 mm label.
+All executables, objects, and generated test output are kept under `build/`.
 
 ## Install the CUPS driver
 
@@ -141,10 +142,10 @@ lpoptions -p TD2130N -l
 The `td2130` utility works independently of CUPS:
 
 ```sh
-./td2130 devices
-sudo ./td2130 status
-./td2130 print label.pbm --media 50x15 --dry-run label.bin
-sudo ./td2130 print label.pbm --media 50x15
+./build/td2130 devices
+sudo ./build/td2130 status
+./build/td2130 print label.pbm --media 50x15 --dry-run label.bin
+sudo ./build/td2130 print label.pbm --media 50x15
 ```
 
 The 50 x 15 mm PBM printable area is at most 554 pixels wide and exactly 106
@@ -163,6 +164,43 @@ sudo udevadm trigger
 
 Unplug and reconnect the printer. The rule is only needed by the direct-USB
 utility; the CUPS USB backend manages its own access.
+
+## Legacy-style configuration editor
+
+`td2130-config` is the clean-room replacement for the behavior recovered from
+`brprintconfpt1_td2130n`. It validates settings against `brtd2130nfunc`, applies
+all requested changes as one transaction, preserves unrelated rc-file content,
+and keeps the previous file as `<rc-file>.old`:
+
+```sh
+./build/td2130-config -P TD2130N \
+  -copy 2 -brit -10 -half ERROR -quality SPEED \
+  -reso 300 -feed 3 -media 50x30 \
+  --root /tmp/staging-root --show
+```
+
+The recovered option spellings are accepted: `-copy`, `-cutlabel`, `-cutend`,
+`-trimtape`, `-compress`, `-brit`, `-cont`, `-half`, `-mirro`, `-rotate`,
+`-peeler`, `-quality`, `-reso`, `-feed`, `-media`, and `-collate`. Use
+`--rc-file` (or legacy spelling `-rcfile`) and `--func-file` for explicit files.
+Resolution values, including 203 or 300 ppi profiles, are accepted only when
+listed by the loaded function-definition file. The original binary had a
+hard-coded 300-only resolution table; this project deliberately extends that
+known-value table with 203 ppi for related 448-dot hardware. The recovered
+TD-2130N function file still enables only 300 ppi, so selecting 203 also
+requires a model definition that explicitly enables it. Other settings must be
+both known to this tool and enabled by the function-definition range or
+selection list. Registered custom-media IDs and display names are both
+accepted and normalized to the 15-character ID stored by the legacy rc format.
+Unknown options or values return 2, known values disabled by the loaded schema
+return 11, and invalid or out-of-range numeric settings return 12. Validation
+is completed before the rc file is replaced, so a failed multi-option command
+does not partially apply earlier settings.
+
+Unlike the old binary, this utility keeps a recoverable `.old` backup and does
+not create the world-writable
+`/var/tmp/lprng_*_rcname` hand-off file. The native CUPS filter receives job
+options directly, so that global, race-prone mechanism is unnecessary.
 
 ## Driver architecture
 
@@ -248,6 +286,64 @@ Custom die-cut sizes are encoded using the protocol's media type, width, and
 length fields. The current public interface uses whole-millimeter dimensions,
 matching the printer status and print-information fields.
 
+### Gap and black-mark sensing
+
+The printer has two physical media sensors:
+
+- the transmissive (gap) sensor detects the gap between ordinary die-cut
+  labels;
+- the reflective (black-mark) sensor detects a black registration mark on the
+  back of the media.
+
+These are sensor modes, not additional values in the Raster print-information
+command. That command distinguishes only continuous media (`0x0a`) from
+die-cut labels (`0x0b`); `0x0b` is used for both paper and film. Consequently,
+the CUPS PPD does not expose misleading `BlackMark` or `Transparent` paper-type
+switches.
+
+Transparent label stock is not itself a sensor mode. Use gap sensing only when
+the liner and label provide enough transmissive contrast for reliable gap
+detection; otherwise use media manufactured with black registration marks and
+the printer's reflective sensor.
+
+Brother's legacy Linux package handled custom paper in two distinct steps.
+`brpapertoolcups` added the custom name and page geometry to the CUPS queue's
+PPD. The separate, binary-only `brpapertoollpr_td2130n` accepted the sensor
+type (`-S 0/1/2` for continuous, die-cut, or media with marks), gap, margins,
+black-mark length, and black-mark offset. It stored a per-media binary file
+under `inf/customtape/`; the binary `rastertobrpt1` loaded that file when the
+matching media name was selected. The open-source `brcupsconfig` only mapped
+the selected CUPS media name into the temporary Brother configuration file.
+
+Those per-media files contain the `ESC i U` additional-media-information data
+described by Brother's Raster reference. This project now provides a clean-room
+generator compatible with the recovered 132-byte file format:
+
+```sh
+make td2130-paper
+./build/td2130-paper -P TD-2130N -n Marked30 -w 30 -h 30 \
+  -g 3 -t 3 -b 3 -l 1.5 -r 1.5 -S 2 -m 5 -o 2 -O Marked30.bin
+```
+
+`-S 0`, `1`, and `2` select continuous, die-cut/gap, and black-mark sensing.
+The TD-2130N-compatible default is 300 dpi with a 672-dot head. For related
+203 dpi hardware, pass `-d 203` (448 dots by default); `-H` can override the
+head width when a model differs. Without `--install-root`, the tool only
+creates the requested media binary. To register it in an installed tree and
+an existing CUPS queue PPD, explicitly request installation:
+
+```sh
+sudo ./build/td2130-paper -P TD2130N -n Marked30 -w 30 -h 30 \
+  -g 3 -t 3 -b 3 -l 1.5 -r 1.5 -S 2 -m 5 -o 2 -d 203 \
+  --install-root /
+```
+
+For tests and packaging, a staging directory such as `--install-root /tmp/root`
+redirects all system paths. `--ppd /path/to/queue.ppd` overrides the derived
+`/etc/cups/ppd/<queue>.ppd`. Registration updates existing entries instead of
+duplicating them. The filter resolves the selected `BrL...` ID, loads its media
+definition, and sends it immediately after printer initialization.
+
 ## Grayscale processing
 
 The PPD requests 8-bit `K` Raster from CUPS (`0` is white and `255` is black).
@@ -264,7 +360,9 @@ without a second halftone conversion.
 
 ## Current limitations
 
-- Only the TD-2130N USB identity and 300 dpi geometry are enabled.
+- The print transport/filter targets the TD-2130N USB identity and 300 dpi,
+  672-dot raster geometry. The custom-media generator can also calculate
+  203 dpi definitions for related hardware.
 - Direct CLI image input is binary PBM; PDF and common image formats should be
   printed through CUPS.
 - Asynchronous completion/status monitoring and cancellation are not yet
