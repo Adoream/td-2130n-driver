@@ -133,7 +133,7 @@ List all queue options:
 lpoptions -p TD2130N -l
 ```
 
-`Output Orientation: Normal (Recommended)` is the hardware-tested result. Use
+`Rotate: Normal (Recommended)` is the hardware-tested result. Use
 `Upside Down (Rotate 180 Degrees)` only for the opposite label-exit direction.
 
 ## Direct USB utility
