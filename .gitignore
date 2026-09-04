@@ -1,6 +1,7 @@
 # Build products
 td2130
 rastertobrothertd2130
+build/
 src/*.o
 tests/test_protocol
 tests/make_cups_raster
@@ -22,6 +23,7 @@ tests/make_cups_raster
 
 # Local Brother reference material; do not publish without redistribution rights
 docs/*.pdf
+docs/unpacking
 cupswrapper-td2130n-src-*/
 *.deb
 *.rpm
