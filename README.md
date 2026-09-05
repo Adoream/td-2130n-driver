@@ -134,8 +134,25 @@ List all queue options:
 lpoptions -p TD2130N -l
 ```
 
+The filter reads both per-job options and the queue-specific PPD supplied by
+CUPS. Therefore defaults changed through `lpadmin`, `lpoptions`, or the CUPS
+web interface affect the generated printer commands; an explicit `lp -o`
+value takes precedence for that job.
+
+For example, set persistent queue defaults with CUPS itself:
+
+```sh
+sudo lpadmin -p TD2130N \
+  -o Rotate180-default=False \
+  -o Priority-default=Quality \
+  -o Halftone-default=Binary
+```
+
 `Rotate: Normal (Recommended)` is the hardware-tested result. Use
 `Upside Down (Rotate 180 Degrees)` only for the opposite label-exit direction.
+Media dimensions are always `width across the print head × length in the feed
+direction`. For example, a physically horizontal 60 × 40 mm label must use a
+60 × 40 media entry; `DieCut40x60` is a portrait 40 mm × 60 mm roll.
 
 ## Direct USB utility
 
@@ -201,6 +218,9 @@ Unlike the old binary, this utility keeps a recoverable `.old` backup and does
 not create the world-writable
 `/var/tmp/lprng_*_rcname` hand-off file. The native CUPS filter receives job
 options directly, so that global, race-prone mechanism is unnecessary.
+Consequently, `td2130-config` is a compatibility/configuration-file editor; it
+does not change a native CUPS queue. Use `lpadmin -o NAME-default=VALUE`,
+`lpoptions`, or the CUPS interface to change settings used for CUPS jobs.
 
 ## Driver architecture
 
@@ -244,11 +264,13 @@ Each generated job contains:
 1. 200 zero bytes to invalidate any incomplete previous command stream;
 2. the printer initialization command;
 3. a switch to Brother Raster mode;
-4. media type, physical size, raster-row count, and quality flags;
-5. orientation and optional peeler mode;
-6. continuous-media feed margin, or zero for die-cut labels;
-7. compressed or uncompressed raster rows;
-8. the final print-and-feed command.
+4. an explicit per-page media definition, so a job cannot inherit the
+   preceding roll's sensor mode or geometry;
+5. media type, physical size, raster-row count, and quality flags;
+6. orientation and optional peeler mode;
+7. continuous-media feed margin, or zero for die-cut labels;
+8. compressed or uncompressed raster rows;
+9. the final print-and-feed command.
 
 The TD-2130N has a 672-dot (84-byte) 300 dpi print head. Brother numbers its
 physical head dots in the opposite horizontal direction from conventional PBM
@@ -334,7 +356,7 @@ an existing CUPS queue PPD, explicitly request installation:
 
 ```sh
 sudo ./build/td2130-paper -P TD2130N -n Marked30 -w 30 -h 30 \
-  -g 3 -t 3 -b 3 -l 1.5 -r 1.5 -S 2 -m 5 -o 2 -d 203 \
+  -g 3 -t 3 -b 3 -l 1.5 -r 1.5 -S 2 -m 5 -o 2 \
   --install-root /
 ```
 
@@ -343,6 +365,9 @@ redirects all system paths. `--ppd /path/to/queue.ppd` overrides the derived
 `/etc/cups/ppd/<queue>.ppd`. Registration updates existing entries instead of
 duplicating them. The filter resolves the selected `BrL...` ID, loads its media
 definition, and sends it immediately after printer initialization.
+On macOS these files are stored below `/Library/Printers/TD2130N/Media`, which
+is readable by the sandboxed CUPS filter. The installer automatically migrates
+registrations created by older versions under `/usr/local/share`.
 
 ## Grayscale processing
 
