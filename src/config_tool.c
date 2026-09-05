@@ -28,6 +28,83 @@ typedef struct {
     size_t length;
 } text_span;
 
+/* Built-in copies of the Brother td2130n INF resources.
+ * External files are used only when the caller explicitly requests an
+ * override with --root/--func-file/--rc-file. */
+static const char embedded_brtd2130nfunc[] =
+    "[td2130n]\n"
+    "\n"
+    "[default]\n"
+    "CutLabel={0}\n"
+    "Trimtape={OFF}\n"
+    "Compress={OFF}\n"
+    "Collate={OFF}\n"
+    "Copies={1}\n"
+    "#AutoCut={ON}\n"
+    "CutAtEnd={OFF}\n"
+    "Brightness={0}\n"
+    "Contrast={0}\n"
+    "Halftone={ERROR}\n"
+    "MirrorPrinting={OFF}\n"
+    "RotatePrinting={OFF}\n"
+    "Peeler={OFF}\n"
+    "Quality={SPEED}\n"
+    "Resolution={300}\n"
+    "Feed={3}\n"
+    "MediaSize={50x30}\n"
+    "\n"
+    "[SelectionItem]\n"
+    "CutLabel={\"0~30\"}\n"
+    "Compress={OFF,ON}\n"
+    "Collate={OFF,ON}\n"
+    "Copies={\"1~10\"}\n"
+    "#AutoCut={OFF,ON}\n"
+    "CutAtEnd={OFF}\n"
+    "Trimtape={OFF,ON}\n"
+    "Brightness={\"-50~50\"}\n"
+    "Contrast={\"-50~50\"}\n"
+    "Halftone={ERROR,BINARY,DITHER}\n"
+    "MirrorPrinting={OFF,ON}\n"
+    "RotatePrinting={OFF,ON}\n"
+    "Peeler={OFF,ON}\n"
+    "Quality={SPEED,QUALITY}\n"
+    "Resolution={300}\n"
+    "Feed={\"3~30\"}\n"
+    "MediaSize={30x30,40x40,40x50,40x60,50x30,51x26,60x60,57X1,58X1}\n"
+    "[Constraint]\n"
+    "\n"
+    "[CustomTape]\n"
+    "[CustomTapeEnd]\n";
+
+static const char embedded_brtd2130nrc[] =
+    "[td2130n]\n"
+    "Collate=OFF\n"
+    "Copies=1\n"
+    "CutLabel=0\n"
+    "#AutoCut=ON\n"
+    "CutAtEnd=OFF\n"
+    "Trimtape=OFF\n"
+    "Compress=OFF\n"
+    "Brightness=0\n"
+    "Contrast=0\n"
+    "Halftone=ERROR\n"
+    "MirrorPrinting=OFF\n"
+    "RotatePrinting=OFF\n"
+    "Peeler=OFF\n"
+    "Quality=SPEED\n"
+    "Resolution=300\n"
+    "Feed=3\n"
+    "MediaSize=50x30\n";
+
+static char *copy_embedded_text(const char *data, size_t length, size_t *size) {
+    char *copy = malloc(length + 1);
+    if (!copy) { errno = ENOMEM; return NULL; }
+    memcpy(copy, data, length);
+    copy[length] = '\0';
+    *size = length;
+    return copy;
+}
+
 static const option_map options[] = {
     {"-copy", "Copies", VALUE_RANGE, NULL, 1, 10},
     {"-cutlabel", "CutLabel", VALUE_RANGE, NULL, 0, 30},
@@ -59,10 +136,12 @@ static void usage(FILE *f) {
           "  -mirro OFF|ON     -rotate OFF|ON  -peeler OFF|ON\n"
           "  -quality SPEED|QUALITY  -reso 203|300\n"
           "  -feed 3..30       -media name     -collate OFF|ON\n"
-          "  --root dir        redirect /opt paths into a staging root\n"
-          "  --rc-file file    edit this rc file (-rcfile is also accepted)\n"
-          "  --func-file file  validate against this function-definition file\n"
-          "  --show            print the resulting/current configuration\n", f);
+          "  --root dir        explicitly use INF files below a staging root\n"
+          "  --rc-file file    edit this external rc file (-rcfile also accepted)\n"
+          "  --func-file file  validate against an external function-definition file\n"
+          "  --show            print the resulting/current configuration\n"
+          "  Default: use built-in brtd2130nfunc/brtd2130nrc; changes are printed\n"
+          "           unless --root or --rc-file selects persistent external storage\n", f);
 }
 
 static char *read_file(const char *path, size_t *size) {
@@ -374,11 +453,11 @@ static int save_atomic(const char *path, const char *data) {
 }
 
 int main(int argc, char **argv) {
-    const char *root = "/", *rc_path = NULL, *func_path = NULL, *queue = NULL;
+    const char *root = NULL, *rc_path = NULL, *func_path = NULL, *queue = NULL;
     char default_rc[1024], default_func[1024];
     setting changes[32];
     size_t change_count = 0, rc_size, func_size;
-    bool show = false;
+    bool show = false, root_override = false;
 
     if (argc == 1) { usage(stdout); return 0; }
     if (argc < 3 || strcmp(argv[1], "-P")) { usage(stderr); return 2; }
@@ -388,7 +467,10 @@ int main(int argc, char **argv) {
         if (!strcmp(argv[i], "--show")) { show = true; ++i; continue; }
         if ((!strcmp(argv[i], "--root") || !strcmp(argv[i], "--rc-file") ||
              !strcmp(argv[i], "-rcfile") || !strcmp(argv[i], "--func-file")) && i + 1 < argc) {
-            if (!strcmp(argv[i], "--root")) root = argv[i + 1];
+            if (!strcmp(argv[i], "--root")) {
+                root = argv[i + 1];
+                root_override = true;
+            }
             else if (!strcmp(argv[i], "--func-file")) func_path = argv[i + 1];
             else rc_path = argv[i + 1];
             i += 2;
@@ -414,32 +496,45 @@ int main(int argc, char **argv) {
         ++change_count;
         i += 2;
     }
-    const char *slash = !strcmp(root, "/") ? "" : root;
-    if (!func_path) {
-        int length = snprintf(default_func, sizeof(default_func),
-                              "%s/opt/brother/PTouch/td2130n/inf/brtd2130nfunc",
-                              slash);
-        if (length < 0 || length >= (int)sizeof(default_func)) {
-            fprintf(stderr, "td2130-config: function-file path is too long\n");
-            return 1;
+    if (root_override) {
+        const char *slash = !strcmp(root, "/") ? "" : root;
+        if (!func_path) {
+            int length = snprintf(default_func, sizeof(default_func),
+                                  "%s/opt/brother/PTouch/td2130n/inf/brtd2130nfunc",
+                                  slash);
+            if (length < 0 || length >= (int)sizeof(default_func)) {
+                fprintf(stderr, "td2130-config: function-file path is too long\n");
+                return 1;
+            }
+            func_path = default_func;
         }
-        func_path = default_func;
-    }
-    if (!rc_path) {
-        int length = snprintf(default_rc, sizeof(default_rc),
-                              "%s/opt/brother/PTouch/td2130n/inf/brtd2130nrc",
-                              slash);
-        if (length < 0 || length >= (int)sizeof(default_rc)) {
-            fprintf(stderr, "td2130-config: rc-file path is too long\n");
-            return 1;
+        if (!rc_path) {
+            int length = snprintf(default_rc, sizeof(default_rc),
+                                  "%s/opt/brother/PTouch/td2130n/inf/brtd2130nrc",
+                                  slash);
+            if (length < 0 || length >= (int)sizeof(default_rc)) {
+                fprintf(stderr, "td2130-config: rc-file path is too long\n");
+                return 1;
+            }
+            rc_path = default_rc;
         }
-        rc_path = default_rc;
     }
-    char *func = read_file(func_path, &func_size);
-    char *rc = read_file(rc_path, &rc_size);
+
+    char *func = func_path
+        ? read_file(func_path, &func_size)
+        : copy_embedded_text(embedded_brtd2130nfunc,
+                             sizeof(embedded_brtd2130nfunc) - 1, &func_size);
+    char *rc = rc_path
+        ? read_file(rc_path, &rc_size)
+        : copy_embedded_text(embedded_brtd2130nrc,
+                             sizeof(embedded_brtd2130nrc) - 1, &rc_size);
     if (!func || !rc) {
-        fprintf(stderr, "td2130-config: cannot open %s: %s\n",
-                !func ? func_path : rc_path, strerror(errno));
+        if ((!func && func_path) || (!rc && rc_path))
+            fprintf(stderr, "td2130-config: cannot open %s: %s\n",
+                    !func ? func_path : rc_path, strerror(errno));
+        else
+            fprintf(stderr, "td2130-config: cannot allocate built-in configuration: %s\n",
+                    strerror(errno));
         free(func); free(rc); return 1;
     }
     if (memchr(func, '\0', func_size) || memchr(rc, '\0', rc_size)) {
@@ -476,11 +571,11 @@ int main(int argc, char **argv) {
         rc = updated;
     }
     free(func);
-    if (change_count && save_atomic(rc_path, rc) != 0) {
+    if (change_count && rc_path && save_atomic(rc_path, rc) != 0) {
         fprintf(stderr, "td2130-config: cannot save %s: %s\n", rc_path, strerror(errno));
         free(rc); return 1;
     }
-    if (show) fputs(rc, stdout);
+    if (show || (change_count && !rc_path)) fputs(rc, stdout);
     else if (!change_count) usage(stdout);
     (void)queue;
     free(rc);
