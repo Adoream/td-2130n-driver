@@ -8,13 +8,25 @@
 #include <string.h>
 #include <unistd.h>
 
+#ifndef TD2130_MEDIA_ROOT_DEFAULT
+#ifdef __APPLE__
+#define TD2130_MEDIA_ROOT_DEFAULT "/Library/Printers/TD2130N/Media"
+#else
+#define TD2130_MEDIA_ROOT_DEFAULT "/usr/local/share/brother/PTouch/td2130n"
+#endif
+#endif
+
+#define TD2130_CUSTOM_REGISTRY "custom_media.conf"
+
 static void usage(FILE *f) {
     fprintf(f,
         "usage: td2130-paper -P queue -n name -w mm [-h mm]\n"
         "       [-g mm] [-t mm] [-b mm] [-l mm] [-r mm]\n"
         "       -S 0|1|2 [-m mm] [-o mm] [-d 203|300] [-H dots] [-O file]\n"
-        "       [--install-root directory] [--ppd file]\n"
-        "  S=0 continuous, S=1 die-cut/gap, S=2 black-mark\n");
+        "       [--install-root directory] [--media-root directory] [--ppd file]\n"
+        "  S=0 continuous, S=1 die-cut/gap, S=2 black-mark\n"
+        "  Custom-media data defaults to " TD2130_MEDIA_ROOT_DEFAULT "\n"
+        "  TD2130_MEDIA_ROOT or --media-root can override that location.\n");
 }
 
 static int mkdir_one(const char *path) {
@@ -62,6 +74,24 @@ static int file_contains(const char *path, const char *needle) {
     (void)size;
     free(data);
     return found;
+}
+
+static int ensure_custom_registry(const char *path) {
+    FILE *f = fopen(path, "rb");
+    if (f) {
+        fclose(f);
+        return 0;
+    }
+    if (errno != ENOENT) return -1;
+    f = fopen(path, "wb");
+    if (!f) return -1;
+    static const char initial[] =
+        "# TD-2130N custom media registry\n"
+        "[CustomTape]\n"
+        "[CustomTapeEnd]\n";
+    int failed = fwrite(initial, 1, sizeof(initial) - 1, f) != sizeof(initial) - 1;
+    if (fclose(f) != 0) failed = 1;
+    return failed ? -1 : 0;
 }
 
 /* Remove the old line(s) for this stable ID and insert replacement text
@@ -118,6 +148,53 @@ static int update_text_file(const char *path, const char *id,
     return 0;
 }
 
+/* Remove stale PPD constraint lines created by older versions of this tool. */
+static int remove_ppd_lines(const char *path, const char *prefix, const char *needle) {
+    size_t old_size, out_size = 0;
+    char *old = read_file(path, &old_size);
+    char *out;
+    const char *p;
+    size_t prefix_len = strlen(prefix);
+    if (!old) return -1;
+    out = malloc(old_size + 1);
+    if (!out) { free(old); return -1; }
+    p = old;
+    while (*p) {
+        const char *end = strchr(p, '\n');
+        size_t len = end ? (size_t)(end - p + 1) : strlen(p);
+        int has_needle = 0;
+        size_t needle_len = strlen(needle);
+        if (needle_len <= len) {
+            for (size_t i = 0; i + needle_len <= len; ++i) {
+                if (!memcmp(p + i, needle, needle_len)) {
+                    has_needle = 1;
+                    break;
+                }
+            }
+        }
+        int remove = len >= prefix_len && !strncmp(p, prefix, prefix_len) &&
+                     has_needle;
+        if (!remove) {
+            memcpy(out + out_size, p, len);
+            out_size += len;
+        }
+        p += len;
+    }
+    free(old);
+
+    char temp[1060];
+    if (snprintf(temp, sizeof(temp), "%s.tmp.%ld", path, (long)getpid()) >=
+        (int)sizeof(temp)) {
+        free(out); errno = ENAMETOOLONG; return -1;
+    }
+    FILE *f = fopen(temp, "wb");
+    if (!f) { free(out); return -1; }
+    int failed = fwrite(out, 1, out_size, f) != out_size || fclose(f) != 0;
+    free(out);
+    if (failed || rename(temp, path) != 0) { unlink(temp); return -1; }
+    return 0;
+}
+
 static unsigned media_hash(const char *name, const td_media_definition *m) {
     unsigned h = 2166136261u;
     for (const unsigned char *p = (const unsigned char *)name; *p; ++p)
@@ -128,48 +205,92 @@ static unsigned media_hash(const char *name, const td_media_definition *m) {
     return h;
 }
 
-static int register_media(const char *root, const char *queue, const char *name,
+static int register_media(const char *install_root, const char *media_root,
+                          const char *queue, const char *name,
                           const char *ppd_arg, const td_media_definition *m,
                           const uint8_t data[TD2130_MEDIA_DEFINITION_SIZE]) {
     char base[1024], path[1200], ppd[1200], id[16], line[4096];
     unsigned hash = media_hash(name, m);
-    unsigned dpi = m->dpi ? m->dpi : 300;
-    int printable_w = (int)((m->width_mm - m->left_mm - m->right_mm) * dpi / 25.4 + 0.5);
-    int printable_h =
-        (int)((m->height_mm - m->top_mm - m->bottom_mm) * dpi / 25.4 + 0.5);
     double pt = 72.0 / 25.4;
+
     snprintf(id, sizeof(id), "BrL%02X%02X%03X%01X%04X",
              (unsigned)strlen(name), hash & 0xff, (hash >> 8) & 0xfff,
              (hash >> 20) & 0xf, (hash >> 4) & 0xffff);
-    if (snprintf(base, sizeof(base), "%s/opt/brother/PTouch/td2130n/inf", root) >= (int)sizeof(base) ||
-        make_parents(base) != 0 || mkdir_one(base) != 0) return -1;
-    snprintf(path, sizeof(path), "%s/customtape", base);
+
+    /* Custom-media binaries are runtime data, not immutable INF resources.
+     * Keep them in one shared path that works on both Linux and macOS.  A
+     * staging install root is prepended only when --media-root is not used. */
+    if (media_root && *media_root) {
+        if (snprintf(base, sizeof(base), "%s", media_root) >= (int)sizeof(base)) {
+            errno = ENAMETOOLONG;
+            return -1;
+        }
+    } else if (install_root && *install_root && strcmp(install_root, "/")) {
+        if (snprintf(base, sizeof(base), "%s%s", install_root,
+                     TD2130_MEDIA_ROOT_DEFAULT) >= (int)sizeof(base)) {
+            errno = ENAMETOOLONG;
+            return -1;
+        }
+    } else {
+        if (snprintf(base, sizeof(base), "%s", TD2130_MEDIA_ROOT_DEFAULT) >=
+            (int)sizeof(base)) {
+            errno = ENAMETOOLONG;
+            return -1;
+        }
+    }
+
+    if (make_parents(base) != 0 || mkdir_one(base) != 0) return -1;
+    if (snprintf(path, sizeof(path), "%s/customtape", base) >= (int)sizeof(path)) {
+        errno = ENAMETOOLONG;
+        return -1;
+    }
     if (mkdir_one(path) != 0) return -1;
-    snprintf(path, sizeof(path), "%s/customtape/%s.bin", base, name);
+    if (snprintf(path, sizeof(path), "%s/customtape/%s.bin", base, name) >=
+        (int)sizeof(path)) {
+        errno = ENAMETOOLONG;
+        return -1;
+    }
     FILE *bin = fopen(path, "wb");
     if (!bin) return -1;
-    int bin_failed = fwrite(data, 1, TD2130_MEDIA_DEFINITION_SIZE, bin) != TD2130_MEDIA_DEFINITION_SIZE;
+    int bin_failed = fwrite(data, 1, TD2130_MEDIA_DEFINITION_SIZE, bin) !=
+                     TD2130_MEDIA_DEFINITION_SIZE;
     if (fclose(bin) != 0) bin_failed = 1;
     if (bin_failed) return -1;
 
-    snprintf(path, sizeof(path), "%s/brtd2130nfunc", base);
-    snprintf(line, sizeof(line), "%s/%s\n", id, name);
+    /* Only the generated custom-media overlay remains external.  The legacy
+     * brtd2130nfunc/paperinftd2130npt1/ImagingArea/PaperDimension INF files
+     * are no longer required here. */
+    if (snprintf(path, sizeof(path), "%s/%s", base, TD2130_CUSTOM_REGISTRY) >=
+        (int)sizeof(path)) {
+        errno = ENAMETOOLONG;
+        return -1;
+    }
+    if (ensure_custom_registry(path) != 0) return -1;
+    if (snprintf(line, sizeof(line), "%s/%s\n", id, name) >= (int)sizeof(line)) {
+        errno = ENAMETOOLONG;
+        return -1;
+    }
     if (update_text_file(path, id, "[CustomTapeEnd]", line) != 0) return -1;
-    snprintf(path, sizeof(path), "%s/paperinftd2130npt1", base);
-    snprintf(line, sizeof(line), "%s/%s:\t%d\t%d\n", id, name, printable_w, printable_h);
-    if (update_text_file(path, id, NULL, line) != 0) return -1;
-    snprintf(path, sizeof(path), "%s/ImagingArea", base);
-    snprintf(line, sizeof(line), "%s\t:\t%.2f\t%.2f\t%.2f\t%.2f\n", id,
-             m->left_mm * pt, m->bottom_mm * pt,
-             (m->width_mm - m->right_mm) * pt, (m->height_mm - m->top_mm) * pt);
-    if (update_text_file(path, id, NULL, line) != 0) return -1;
-    snprintf(path, sizeof(path), "%s/PaperDimension", base);
-    snprintf(line, sizeof(line), "%s\t:\t%.2f\t%.2f\n", id,
-             m->width_mm * pt, m->height_mm * pt);
-    if (update_text_file(path, id, NULL, line) != 0) return -1;
 
-    if (ppd_arg) snprintf(ppd, sizeof(ppd), "%s", ppd_arg);
-    else snprintf(ppd, sizeof(ppd), "%s/etc/cups/ppd/%s.ppd", root, queue);
+    if (ppd_arg) {
+        if (snprintf(ppd, sizeof(ppd), "%s", ppd_arg) >= (int)sizeof(ppd)) {
+            errno = ENAMETOOLONG;
+            return -1;
+        }
+    } else if (install_root && *install_root && strcmp(install_root, "/")) {
+        if (snprintf(ppd, sizeof(ppd), "%s/etc/cups/ppd/%s.ppd",
+                     install_root, queue) >= (int)sizeof(ppd)) {
+            errno = ENAMETOOLONG;
+            return -1;
+        }
+    } else {
+        if (snprintf(ppd, sizeof(ppd), "/etc/cups/ppd/%s.ppd", queue) >=
+            (int)sizeof(ppd)) {
+            errno = ENAMETOOLONG;
+            return -1;
+        }
+    }
+
     snprintf(line, sizeof(line),
              "*PageSize %s/%s:\t\"<</PageSize [%.3f %.3f] /ImagingBBox null>> setpagedevice\"\n",
              id, name, m->width_mm * pt, m->height_mm * pt);
@@ -187,16 +308,15 @@ static int register_media(const char *root, const char *queue, const char *name,
     const char *paper_marker = file_contains(ppd, "*HWMargins:")
                                    ? "*HWMargins:" : "*OpenUI *BrMargin";
     if (update_text_file(ppd, id, paper_marker, line) != 0) return -1;
-    if (m->sensor != TD_MEDIA_CONTINUOUS) {
-        size_t used = 0;
-        line[0] = '\0';
-        const char *feed_option = file_contains(ppd, "*OpenUI *Feed/") ? "Feed" : "BrMargin";
-        for (int feed = 3; feed <= 30; ++feed)
-            used += (size_t)snprintf(line + used, sizeof(line) - used,
-                "*UIConstraints:\t*%s %d\t*PageSize %s\n", feed_option, feed, id);
-        if (update_text_file(ppd, id, NULL, line) != 0) return -1;
-    }
-    fprintf(stderr, "registered media %s as %s in %s\n", name, id, ppd);
+    /* Older versions added a UIConstraints line for every Feed value when
+     * registering die-cut/black-mark media.  Since Feed has no "None" choice
+     * in this PPD (and defaults to 3), that makes the custom PageSize
+     * unselectable.  Feed is ignored for non-continuous media by cups_filter,
+     * so no PPD constraint is necessary.  Also clean any stale constraints
+     * created by an older td2130-paper when this media is re-registered. */
+    if (remove_ppd_lines(ppd, "*UIConstraints:", id) != 0) return -1;
+    fprintf(stderr, "registered media %s as %s; data=%s; ppd=%s\n",
+            name, id, base, ppd);
     return 0;
 }
 
@@ -210,7 +330,7 @@ static int number(const char *s, double *out) {
 int main(int argc, char **argv) {
     td_media_definition m = {0};
     const char *queue = NULL, *name = NULL, *output = NULL;
-    const char *install_root = NULL, *ppd = NULL;
+    const char *install_root = NULL, *media_root = NULL, *ppd = NULL;
     uint8_t data[TD2130_MEDIA_DEFINITION_SIZE];
     char default_output[1024];
     FILE *fp;
@@ -219,6 +339,7 @@ int main(int argc, char **argv) {
     static const struct option long_options[] = {
         {"install-root", required_argument, NULL, 1000},
         {"ppd", required_argument, NULL, 1001},
+        {"media-root", required_argument, NULL, 1002},
         {NULL, 0, NULL, 0}
     };
     while ((opt = getopt_long(argc, argv, "P:n:w:h:g:t:b:l:r:S:m:o:d:H:O:?",
@@ -268,6 +389,7 @@ int main(int argc, char **argv) {
         case 'O': output = optarg; continue;
         case 1000: install_root = optarg; continue;
         case 1001: ppd = optarg; continue;
+        case 1002: media_root = optarg; continue;
         default: usage(opt == '?' ? stderr : stdout); return opt == '?' ? 2 : 0;
         }
         if (number(optarg, dst) != 0) {
@@ -285,11 +407,14 @@ int main(int argc, char **argv) {
         fprintf(stderr, "invalid or unsupported paper geometry\n");
         return 2;
     }
-    if (install_root && register_media(install_root, queue, name, ppd, &m, data) != 0) {
+    if ((install_root || media_root) &&
+        register_media(install_root,
+                       media_root ? media_root : getenv("TD2130_MEDIA_ROOT"),
+                       queue, name, ppd, &m, data) != 0) {
         fprintf(stderr, "registration failed: %s\n", strerror(errno));
         return 1;
     }
-    if (!output && !install_root) {
+    if (!output && !install_root && !media_root) {
         (void)snprintf(default_output, sizeof(default_output), "%s.bin", name);
         output = default_output;
     }
