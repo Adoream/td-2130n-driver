@@ -27,13 +27,13 @@
 *OpenUI *PageSize/Media: PickOne
 *OrderDependency: 10 AnySetup *PageSize
 *DefaultPageSize: DieCut50x15
-*PageSize DieCut50x15/50 x 15 mm Die-cut: "<</PageSize [141.732 42.520] /ImagingBBox null>> setpagedevice"
+*PageSize DieCut50x15/50 mm across x 15 mm feed: "<</PageSize [141.732 42.520] /ImagingBBox null>> setpagedevice"
 *PageSize DieCut30x30/30 x 30 mm Die-cut: "<</PageSize [85.039 85.039] /ImagingBBox null>> setpagedevice"
 *PageSize DieCut40x40/40 x 40 mm Die-cut: "<</PageSize [113.386 113.386] /ImagingBBox null>> setpagedevice"
-*PageSize DieCut40x50/40 x 50 mm Die-cut: "<</PageSize [113.386 141.732] /ImagingBBox null>> setpagedevice"
-*PageSize DieCut40x60/40 x 60 mm Die-cut: "<</PageSize [113.386 170.079] /ImagingBBox null>> setpagedevice"
-*PageSize DieCut50x30/50 x 30 mm Die-cut: "<</PageSize [141.732 85.039] /ImagingBBox null>> setpagedevice"
-*PageSize DieCut51x26/51 x 26 mm Die-cut: "<</PageSize [144.567 73.701] /ImagingBBox null>> setpagedevice"
+*PageSize DieCut40x50/40 mm across x 50 mm feed: "<</PageSize [113.386 141.732] /ImagingBBox null>> setpagedevice"
+*PageSize DieCut40x60/40 mm across x 60 mm feed (portrait): "<</PageSize [113.386 170.079] /ImagingBBox null>> setpagedevice"
+*PageSize DieCut50x30/50 mm across x 30 mm feed (landscape): "<</PageSize [141.732 85.039] /ImagingBBox null>> setpagedevice"
+*PageSize DieCut51x26/51 mm across x 26 mm feed (landscape): "<</PageSize [144.567 73.701] /ImagingBBox null>> setpagedevice"
 *PageSize DieCut60x60/60 x 60 mm Die-cut: "<</PageSize [170.079 170.079] /ImagingBBox null>> setpagedevice"
 *PageSize Roll57/57 mm Continuous (100 mm page): "<</PageSize [161.575 283.465] /ImagingBBox null>> setpagedevice"
 *PageSize Roll58/58 mm Continuous (100 mm page): "<</PageSize [164.409 283.465] /ImagingBBox null>> setpagedevice"

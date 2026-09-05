@@ -25,7 +25,7 @@ int td2130_build_media_definition(
     static const uint8_t command[] = {0x1b, 0x69, 0x55, 0x77, 0x01, 0x3f};
     uint8_t *p;
     int width, height, gap, left, right, top, bottom, mark_length, mark_offset;
-    int centered_width, head_offset;
+    int centered_width, printable_width, head_offset;
     unsigned dpi, head_dots;
 
     if (!out || !m || m->sensor < TD_MEDIA_CONTINUOUS ||
@@ -35,7 +35,8 @@ int td2130_build_media_definition(
         m->top_mm < 0.0 || m->bottom_mm < 0.0 || m->left_mm < 0.0 ||
         m->right_mm < 0.0 || m->mark_length_mm < 0.0 ||
         m->mark_offset_mm < 0.0 || m->left_mm + m->right_mm >= m->width_mm ||
-        m->height_mm <= 0.0 || m->top_mm + m->bottom_mm >= m->height_mm)
+        (m->sensor != TD_MEDIA_CONTINUOUS &&
+         (m->height_mm <= 0.0 || m->top_mm + m->bottom_mm >= m->height_mm)))
         return -1;
 
     dpi = m->dpi ? m->dpi : 300u;
@@ -58,15 +59,27 @@ int td2130_build_media_definition(
     mark_offset = legacy_mm_to_dots(m->mark_offset_mm, 3, dpi);
 
     centered_width = legacy_mm_to_dots(m->width_mm - 2.0 * m->left_mm, 1, dpi);
+    printable_width = width - left - right;
+    /* Legacy fixed-point conversions can disagree by one dot at the print-head
+     * boundary (for example 60 mm with 1.5 mm side margins at 300 dpi). */
+    if (centered_width > (int)head_dots && centered_width == (int)head_dots + 1)
+        centered_width = (int)head_dots;
+    if (printable_width > (int)head_dots && printable_width == (int)head_dots + 1)
+        printable_width = (int)head_dots;
     head_offset = ((int)head_dots - centered_width) / 2;
-    if (head_offset < 0)
+    if (head_offset < 0 || printable_width > (int)head_dots - head_offset)
         return -1;
 
     p[0] = m->sensor == TD_MEDIA_CONTINUOUS ? 4 : 5;
     p[1] = (uint8_t)m->width_mm;
-    put_u16le(p + 2, (unsigned)m->height_mm);
+    put_u16le(p + 2, m->sensor == TD_MEDIA_CONTINUOUS
+                         ? 0u : (unsigned)m->height_mm);
+    p[4] = (uint8_t)(m->sensor == TD_MEDIA_CONTINUOUS
+                         ? m->width_mm
+                         : (m->width_mm + 4.0 > 63.0 ? 63.0
+                                                      : m->width_mm + 4.0));
     put_u16le(p + 5, (unsigned)head_offset);
-    put_u16le(p + 7, (unsigned)(width - left - right));
+    put_u16le(p + 7, (unsigned)printable_width);
     put_u16le(p + 9, m->sensor == TD_MEDIA_CONTINUOUS
                            ? 0u : (unsigned)(height - top - bottom));
 
@@ -174,8 +187,12 @@ int td2130_build_job_ex(td_buffer *out, const uint8_t *bitmap, unsigned width,
     unsigned media_width_mm = options->media_width_mm;
     unsigned media_length_mm = options->media_length_mm;
     unsigned margin_dots = options->margin_dots;
-    unsigned max_width = td2130_printable_width(media_width_mm, media_length_mm);
-    unsigned fixed_rows = td2130_printable_height(media_width_mm, media_length_mm);
+    unsigned max_width = options->printable_width_dots
+                             ? options->printable_width_dots
+                             : td2130_printable_width(media_width_mm, media_length_mm);
+    unsigned fixed_rows = options->printable_height_dots
+                              ? options->printable_height_dots
+                              : td2130_printable_height(media_width_mm, media_length_mm);
     bool die_cut = media_length_mm != 0;
     if (!out || !bitmap || !width || !height || stride < (width + 7) / 8 ||
         !max_width || width > max_width || height > 11811 ||
@@ -201,7 +218,11 @@ int td2130_build_job_ex(td_buffer *out, const uint8_t *bitmap, unsigned width,
         add(out, margin, sizeof(margin)) ||
         add(out, compression, sizeof(compression))) return -1;
 
-    unsigned head_offset = (TD2130_HEAD_DOTS - max_width) / 2;
+    unsigned head_offset = options->printable_width_dots
+                               ? options->head_offset_dots
+                               : (TD2130_HEAD_DOTS - max_width) / 2;
+    if (head_offset > TD2130_HEAD_DOTS ||
+        max_width > TD2130_HEAD_DOTS - head_offset) return -1;
     unsigned image_offset = head_offset + (max_width - width) / 2;
     for (unsigned y = 0; y < height; ++y) {
         uint8_t row[TD2130_RASTER_BYTES] = {0};
@@ -238,7 +259,7 @@ int td2130_build_job(td_buffer *out, const uint8_t *bitmap, unsigned width,
                      unsigned media_length_mm, unsigned margin_dots,
                      bool rotate_180) {
     td_print_options options = {media_width_mm, media_length_mm, margin_dots,
-                                rotate_180, false, false, true, false};
+                                rotate_180, false, false, true, false, 0, 0, 0};
     return td2130_build_job_ex(out, bitmap, width, height, stride, &options);
 }
 

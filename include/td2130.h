@@ -37,6 +37,9 @@ typedef struct {
     bool peeler;
     bool quality;
     bool compress;
+    unsigned printable_width_dots;  /* zero derives from physical media */
+    unsigned printable_height_dots; /* zero derives from physical media */
+    unsigned head_offset_dots;      /* used with printable_width_dots */
 } td_print_options;
 
 typedef enum {
