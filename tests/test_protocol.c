@@ -14,11 +14,18 @@ int main(void) {
     assert(td2130_build_media_definition(media, &continuous) == 0);
     assert(memcmp(media, "\033iUw\001\077", 6) == 0);
     assert(media[6] == 4 && media[7] == 30);
+    assert(media[10] == 30); /* continuous roll width */
     assert(media[11] == 176 && media[12] == 0); /* centered head offset */
     assert(media[13] == 62 && media[14] == 1);  /* printable width: 318 */
     assert(media[15] == 0 && media[16] == 0);
     assert(strcmp((char *)media + 6 + 0x4c, "30mm") == 0);
     assert(media[6 + 0x78] == 0);
+
+    td_media_definition edge = continuous;
+    edge.width_mm = 60;
+    edge.height_mm = 40;
+    assert(td2130_build_media_definition(media, &edge) == 0);
+    assert(media[13] == 160 && media[14] == 2); /* clamp 673 to 672 dots */
 
     td_media_definition marked = continuous;
     marked.sensor = TD_MEDIA_BLACK_MARK;
@@ -26,6 +33,7 @@ int main(void) {
     marked.mark_offset_mm = 2;
     assert(td2130_build_media_definition(media, &marked) == 0);
     assert(media[6] == 5 && media[6 + 0x78] == 2);
+    assert(media[10] == 34); /* die-cut backing roll width */
     assert(media[6 + 0x6e] == 133 && media[6 + 0x6f] == 1); /* 354 + 35 */
     assert(media[6 + 0x74] == 24 && media[6 + 0x75] == 0);
     assert(media[6 + 0x76] == 59 && media[6 + 0x77] == 0);
@@ -61,7 +69,8 @@ int main(void) {
     assert(td2130_build_job(&b, custom, 436, 165, 55, 40, 20, 0, true) == 0);
     td_buffer_free(&b);
 
-    td_print_options compressed = {50, 15, 0, true, true, true, false, true};
+    td_print_options compressed = {50, 15, 0, true, true, true, false, true,
+                                   0, 0, 0};
     td_buffer_init(&b);
     assert(td2130_build_job_ex(&b, die_cut, 1, 106, 1, &compressed) == 0);
     assert(b.data[209] == 0x8e);
